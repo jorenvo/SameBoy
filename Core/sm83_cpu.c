@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <errno.h>
 #include "gb.h"
 
 
@@ -1560,6 +1561,30 @@ static GB_opcode_t *opcodes[256] = {
     ld_a_da8,   pop_rr,     ld_a_dc,    di,         ill,        push_rr,    or_a_d8,    rst,        /* fX */
     ld_hl_sp_r8,ld_sp_hl,   ld_a_da16,  ei,         ill,        ill,        cp_a_d8,    rst,
 };
+
+FILE *sp_file = 0;
+
+void log_pc_setup(GB_gameboy_t *gb) {
+    if (sp_file) return;
+    sp_file = fopen("/tmp/sp_file.txt", "w");
+
+    if (!sp_file) {
+        GB_log(gb, "failed to open file with %d\n", errno);
+    }
+}
+
+void log_pc(GB_gameboy_t *gb) {
+    // TODO check if we're in an interrupt routine
+    // sp_when_entering_interrupt = 0
+    // ret_addr_out_of_interrupt = 0
+
+    log_pc_setup(gb);
+
+    if (sp_file) {
+        fprintf(sp_file, "%d\n", gb->pc);
+    }
+}
+
 void GB_cpu_run(GB_gameboy_t *gb)
 {
     if (gb->hdma_on) {
@@ -1642,6 +1667,7 @@ void GB_cpu_run(GB_gameboy_t *gb)
     }
     /* Run mode */
     else if (!gb->halted) {
+        log_pc(gb);
         gb->last_opcode_read = cycle_read_inc_oam_bug(gb, gb->pc++);
         if (gb->halt_bug) {
             gb->pc--;
