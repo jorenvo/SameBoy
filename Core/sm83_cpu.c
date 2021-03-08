@@ -1563,6 +1563,8 @@ static GB_opcode_t *opcodes[256] = {
 };
 
 FILE *sp_file = 0;
+uint16_t interrupt_ret = 0;
+uint16_t interrupt_ret_sp = 0xffff;
 
 void log_pc_setup(GB_gameboy_t *gb) {
     if (sp_file) return;
@@ -1578,10 +1580,23 @@ void log_pc(GB_gameboy_t *gb) {
     // sp_when_entering_interrupt = 0
     // ret_addr_out_of_interrupt = 0
 
-    log_pc_setup(gb);
+    bool wrote = false;
 
-    if (sp_file) {
-        fprintf(sp_file, "%d\n", gb->pc);
+    // if we're above the previous addr it's popped
+    if (gb->sp <= interrupt_ret_sp) {
+        // if what's at this address changed it's popped
+        if (GB_read_memory(gb, interrupt_ret_sp) != (interrupt_ret & 0xff) || GB_read_memory(gb, interrupt_ret_sp + 1) != (interrupt_ret >> 8)) {
+            log_pc_setup(gb);
+
+            if (sp_file) {
+                fprintf(sp_file, "0x%04x\n", gb->pc);
+                wrote = true;
+            }
+        }
+    }
+
+    if (!wrote) {
+        GB_log(gb, "in interrupt\n");
     }
 }
 
@@ -1649,6 +1664,9 @@ void GB_cpu_run(GB_gameboy_t *gb)
             cycle_write(gb, --gb->registers[GB_REGISTER_SP], (gb->pc) & 0xFF);
             interrupt_queue &= (gb->io_registers[GB_IO_IF]) & 0x1F;
         }
+
+        interrupt_ret_sp = gb->registers[GB_REGISTER_SP];
+        interrupt_ret = gb->pc;
         
         if (interrupt_queue) {
             uint8_t interrupt_bit = 0;
