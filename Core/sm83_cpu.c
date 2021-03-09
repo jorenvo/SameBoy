@@ -1562,20 +1562,21 @@ static GB_opcode_t *opcodes[256] = {
     ld_hl_sp_r8,ld_sp_hl,   ld_a_da16,  ei,         ill,        ill,        cp_a_d8,    rst,
 };
 
-FILE *sp_file = 0;
+FILE *pc_file = 0;
 uint16_t interrupt_ret = 0;
 uint16_t interrupt_ret_sp = 0xffff;
+bool past_bootrom = false;
 
 void log_pc_setup(GB_gameboy_t *gb) {
-    if (sp_file) return;
-    sp_file = fopen("/tmp/sp_file.txt", "w");
+    if (pc_file) return;
+    pc_file = fopen("/tmp/pc_file.txt", "w");
 
-    if (!sp_file) {
+    if (!pc_file) {
         GB_log(gb, "failed to open file with %d\n", errno);
     }
 }
 
-void log_pc(GB_gameboy_t *gb) {
+void log_pc(GB_gameboy_t *gb, uint16_t pc) {
     // TODO check if we're in an interrupt routine
     // sp_when_entering_interrupt = 0
     // ret_addr_out_of_interrupt = 0
@@ -1588,16 +1589,16 @@ void log_pc(GB_gameboy_t *gb) {
         if (GB_read_memory(gb, interrupt_ret_sp) != (interrupt_ret & 0xff) || GB_read_memory(gb, interrupt_ret_sp + 1) != (interrupt_ret >> 8)) {
             log_pc_setup(gb);
 
-            if (sp_file) {
-                fprintf(sp_file, "0x%04x\n", gb->pc);
+            if (pc_file) {
+                fprintf(pc_file, "0x%04x\n", pc);
                 wrote = true;
             }
         }
     }
 
-    if (!wrote) {
-        GB_log(gb, "in interrupt\n");
-    }
+//    if (!wrote) {
+//        GB_log(gb, "in interrupt\n");
+//    }
 }
 
 void GB_cpu_run(GB_gameboy_t *gb)
@@ -1643,7 +1644,7 @@ void GB_cpu_run(GB_gameboy_t *gb)
     }
     
     /* Call interrupt */
-    else if (effective_ime && interrupt_queue) {
+    else if (false && effective_ime && interrupt_queue) { // TODO disabled interrupts
         gb->halted = false;
         uint16_t call_addr = gb->pc;
         
@@ -1685,7 +1686,13 @@ void GB_cpu_run(GB_gameboy_t *gb)
     }
     /* Run mode */
     else if (!gb->halted) {
-        log_pc(gb);
+        if (past_bootrom) {
+            log_pc(gb, gb->pc);
+        }
+
+        if (gb->pc == 0x100) {
+            past_bootrom = true;
+        }
         gb->last_opcode_read = cycle_read_inc_oam_bug(gb, gb->pc++);
         if (gb->halt_bug) {
             gb->pc--;
